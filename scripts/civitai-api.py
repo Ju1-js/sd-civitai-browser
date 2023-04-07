@@ -12,7 +12,7 @@ from tqdm import tqdm
 import re
 from requests.exceptions import ConnectionError
 import urllib.request
-from modules.shared import opts, cmd_opts
+from modules.shared import opts, cmd_opts, OptionInfo
 from modules.paths import models_path
 import shutil
 
@@ -225,7 +225,7 @@ def download_file_thread(url, file_name, content_type, use_new_folder, model_nam
 #            if not os.path.exists(model_folder):
 #                os.makedirs(model_folder)
     global blDownload
-    if blDownload:
+    if blDownload and opts.second_click_cancels:
         blDownload = False
         return
     blDownload = True
@@ -681,4 +681,10 @@ def on_ui_tabs():
 
     return (civitai_interface, "CivitAi", "civitai_interface"),
 
+def on_ui_settings():
+    section = ('civitai-browser', "Civitai Browser")
+    opts.add_option("second_click_cancels", OptionInfo(
+        False, "Cancel download if download button is clicked a second time", section=section))
+
 script_callbacks.on_ui_tabs(on_ui_tabs)
+script_callbacks.on_ui_tabs(on_ui_settings)
