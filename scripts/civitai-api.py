@@ -686,5 +686,5 @@ def on_ui_settings():
     opts.add_option("second_click_cancels", OptionInfo(
         False, "Cancel download if download button is clicked a second time", section=section))
 
-script_callbacks.on_ui_tabs(on_ui_tabs)
 script_callbacks.on_ui_tabs(on_ui_settings)
+script_callbacks.on_ui_tabs(on_ui_tabs)
