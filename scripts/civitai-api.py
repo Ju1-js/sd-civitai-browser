@@ -6,6 +6,7 @@ from modules import script_callbacks
 import time
 import threading
 import urllib.request
+import urllib.parse
 import urllib.error
 import os
 from tqdm import tqdm
@@ -15,6 +16,7 @@ import urllib.request
 from modules.shared import opts, cmd_opts, OptionInfo
 from modules.paths import models_path
 import shutil
+from html import escape
 
 def download_file(url, file_name):
     # Maximum number of retries
@@ -165,6 +167,7 @@ def extranetwork_folder(content_type, use_new_folder, model_name = ""):
                                      ">": r"",
                                      "!": r"",
                                      "?": r"",
+                                     ".": r"_",
                                      "\"": r"",
                                      "\\": r""})
         if use_new_folder:
@@ -294,35 +297,43 @@ blDownload = False
 
 def api_to_data(content_type, sort_type, use_search_term, search_term=None):
     if use_search_term and search_term:
-        search_term = search_term.replace(" ","%20")
-        return request_civit_api(f"{api_url}&types={content_type}&sort={sort_type}&query={search_term}")
+        #search_term = search_term.replace(" ","%20")
+        return request_civit_api(f"{api_url}", {'types': content_type, 'sort': sort_type, 'query': search_term } )
     else:
-        return request_civit_api(f"{api_url}&types={content_type}&sort={sort_type}")
+        return request_civit_api(f"{api_url}", {'types': content_type, 'sort': sort_type} )
 
 def api_next_page(next_page_url=None):
     global json_data
-    try: json_data['metadata']['nextPage']
-    except: return
-    if json_data['metadata']['nextPage'] is not None:
+    if next_page_url == None:
+        try: json_data['metadata']['nextPage']
+        except: return
         next_page_url = json_data['metadata']['nextPage']
-    if next_page_url is not None:
-        return request_civit_api(next_page_url)
+    return request_civit_api(next_page_url)
 
 def model_list_html(json_data, model_dict):
-    html = '<div class="column civmodellist">'
+    HTML = '<div class="column civmodellist">'
     for item in json_data['items']:
         for k,model in model_dict.items():
             if model_dict[k] == item['name']:
                 #print(f'Item:{item["modelVersions"][0]["images"]}')
-                html = html +  f'<figure class="civmodelcard">'\
+                HTML = HTML +  f'<figure class="civmodelcard">'\
                             +  f'<img src={item["modelVersions"][0]["images"][0]["url"]}></img>'\
                             +  f'<figcaption>{item["name"]}</figcaption></figure>'
-    html = html + '</div>'
-    return html
+    HTML = HTML + '</div>'
+    return HTML
 
-def update_next_page(show_nsfw):
+def update_prev_page(show_nsfw):
+    return update_next_page(show_nsfw, False)
+
+def update_next_page(show_nsfw, isNext=True):
     global json_data
-    json_data = api_next_page()
+    if isNext:
+        json_data = api_next_page()
+    else:
+        if json_data['metadata']['prevPage'] is not None:
+            json_data = api_next_page(json_data['metadata']['prevPage'])
+        else:
+            json_data = None
     model_dict = {}
     try: json_data['items']
     except TypeError: return gr.Dropdown.update(choices=[], value=None)
@@ -334,8 +345,8 @@ def update_next_page(show_nsfw):
             temp_nsfw = item['nsfw']
             if not temp_nsfw:
                 model_dict[item['name']] = item['name']
-    html = model_list_html(json_data, model_dict)
-    return gr.Dropdown.update(choices=[v for k, v in model_dict.items()], value=None), gr.Dropdown.update(choices=[], value=None), gr.HTML.update(value=html)
+    HTML = model_list_html(json_data, model_dict)
+    return gr.Dropdown.update(choices=[v for k, v in model_dict.items()], value=None), gr.Dropdown.update(choices=[], value=None), gr.HTML.update(value=HTML)
 
 def update_model_list(content_type, sort_type, use_search_term, search_term, show_nsfw):
     global json_data
@@ -350,8 +361,8 @@ def update_model_list(content_type, sort_type, use_search_term, search_term, sho
             if not temp_nsfw:
                 model_dict[item['name']] = item['name']
 
-    html = model_list_html(json_data, model_dict)
-    return gr.Dropdown.update(choices=[v for k, v in model_dict.items()], value=None), gr.Dropdown.update(choices=[], value=None), gr.HTML.update(value=html)
+    HTML = model_list_html(json_data, model_dict)
+    return gr.Dropdown.update(choices=[v for k, v in model_dict.items()], value=None), gr.Dropdown.update(choices=[], value=None), gr.HTML.update(value=HTML)
 
 def update_model_versions(model_name=None):
     if model_name is not None:
@@ -426,27 +437,36 @@ def  update_model_info(model_name=None, model_version=None):
                             if pic['meta']:
                                 img_html = img_html + '<div style="text-align:left;line-height: 1.5em;">'
                                 for key, value in pic['meta'].items():
-                                    img_html = img_html + f'{key}: {value}</br>'
+                                    img_html = img_html + f'{escape(str(key))}: {escape(str(value))}</br>'
                                 img_html = img_html + '</div>'
                             img_html = img_html + '</div>'
                         img_html = img_html + '</div>'
-                        output_html = f"<p><b>Model:</b> {model_name}<br><b>Version:</b> {model_version}<br><b>Uploaded by:</b> {model_uploader}<br><b>Trained Tags:</b> {output_training}<br>{allow}<br><a href={model_url}><b>Download Here</b></a></p><br><br>{model_desc}<br><div align=center>{img_html}</div>"
+                        output_html = f"<p><b>Model:</b> {escape(str(model_name))}<br><b>Version:</b> {escape(str(model_version))}<br><b>Uploaded by:</b> {escape(str(model_uploader))}<br><b>Trained Tags:</b> {escape(str(output_training))}<br>{escape(str(allow))}<br><a href={model_url}><b>Download Here</b></a></p><br><br>{model_desc}<br><div align=center>{img_html}</div>"
         return gr.HTML.update(value=output_html), gr.Textbox.update(value=output_training), gr.Dropdown.update(choices=[k for k, v in dl_dict.items()], value=next(iter(dl_dict.keys()), None))
     else:
         return gr.HTML.update(value=None), gr.Textbox.update(value=None), gr.Dropdown.update(choices=[], value=None)
 
 
-def request_civit_api(api_url=None):
+def request_civit_api(api_url=None, payload=None):
+    if payload != None:
+        payload = urllib.parse.urlencode(payload, quote_via=urllib.parse.quote)
     # Make a GET request to the API
-    response = requests.get(api_url)
-
+    try:
+        response = requests.get(api_url, params=payload, timeout=30)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print("Request error: ", e)
+        print(f"Query: {payload} URL: {response.url}")
+        exit()
+    else:
+        response.encoding  = "utf-8" # response.apparent_encoding
+        data = json.loads(response.text)
     # Check the status code of the response
-    if response.status_code != 200:
-      print("Request failed with status code: {}".format(response.status_code))
-      exit()
-
-    data = json.loads(response.text)
+    #if response.status_code != 200:
+    #  print("Request failed with status code: {}".format(response.status_code))
+    #  exit()
     return data
+
 
 def update_everything(list_models, list_versions, model_filename, dl_url):
     (a, d, f) = update_model_info(list_models, list_versions)
@@ -506,14 +526,14 @@ def save_image_files(preview_image_html, model_filename, list_models, content_ty
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)
 
-    html = preview_image_html
+    HTML = preview_image_html
     for i, img_url in enumerate(img_urls):
         filename = f'{name}_{i}.png'
         filenamethumb = f'{name}.png'
         if content_type == "TextualInversion":
             filename = f'{name}_{i}.preview.png'
             filenamethumb = f'{name}.preview.png'
-        html = html.replace(img_url,filename)
+        HTML = HTML.replace(img_url,filename)
         img_url = urllib.parse.quote(img_url,  safe=':/=')   #img_url.replace("https", "http").replace("=","%3D")
         print(img_url, filename)
         try:
@@ -533,7 +553,7 @@ def save_image_files(preview_image_html, model_filename, list_models, content_ty
     path_to_new_file = os.path.join(model_folder, f'{name}.html')
     #if not os.path.exists(path_to_new_file):
     with open(path_to_new_file, 'wb') as f:
-        f.write(html.encode('utf8'))
+        f.write(HTML.encode('utf8'))
     #Save json_info
     path_to_new_file = os.path.join(model_folder, f'{name}.civitai.info')
     with open(path_to_new_file, mode="w", encoding="utf-8") as f:
@@ -555,7 +575,9 @@ def on_ui_tabs():
             search_term = gr.Textbox(label="Search Term", interactive=True, lines=1)
         with gr.Row():
             get_list_from_api = gr.Button(label="Get List", value="Get List")
-            get_next_page = gr.Button(value="Next Page")
+            with gr.Box():
+                get_prev_page = gr.Button(value="Prev. Page")
+                get_next_page = gr.Button(value="Next Page")
         with gr.Row():
             list_html = gr.HTML()
         with gr.Row():
@@ -669,6 +691,17 @@ def on_ui_tabs():
         )
         get_next_page.click(
             fn=update_next_page,
+            inputs=[
+            show_nsfw,
+            ],
+            outputs=[
+            list_models,
+            list_versions,
+            list_html
+            ]
+        )
+        get_prev_page.click(
+            fn=update_prev_page,
             inputs=[
             show_nsfw,
             ],
